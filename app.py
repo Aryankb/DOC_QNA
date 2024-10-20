@@ -178,25 +178,26 @@ async def process_document(text, document_name, chunk_size, chunk_overlap):
     texts = text_splitter.split_text(text)
     print(f"Total text chunks: {len(texts)}")
     tasks = []
-    idx=1
-    for chunk_text in texts:
-        unformatted = construction_chain.invoke({"input":chunk_text})
+    idx=0
+    while idx < len(texts):
+        unformatted = construction_chain.invoke({"input":text[idx]})
         # formatted_outer=json.loads(unformatted.model_dump())   
+        try:
+            wow=json.loads(unformatted.content[7:-4])
+            # print(wow,"\n")
+            tasks.append(wow)
+            print(idx)
+            idx+=1
+        except:
+            continue
+
         
-        tasks.append(unformatted.content[7:-4])
-        print(idx)
-        idx+=1
         # print(unformatted.content,"\n")
         
     
     print(f"Finished LLM extraction after: {datetime.now() - start}")
     print(tasks)
-    docs=[]
-    for el in tasks:
-        wow=json.loads(el)
-        print(wow,"\n")
-        docs.append(wow)
-    for index, doc in enumerate(docs):
+    for index, doc in enumerate(tasks):
         doc['chunk_id'] = encode_md5(texts[index])
         doc['chunk_text'] = texts[index]
         doc['index'] = index
@@ -205,7 +206,7 @@ async def process_document(text, document_name, chunk_size, chunk_overlap):
             af["id"] = encode_md5(af["atomic_fact"])
     driver = GraphDatabase.driver(uri, auth=(username, password))
     with driver.session() as session:
-        session.run(import_query, document_name=document_name, data=docs)
+        session.run(import_query, document_name=document_name, data=tasks)
 
     with driver.session() as session:
         session.run(graph_creation_query, document_name=document_name)
