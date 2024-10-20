@@ -18,4 +18,5 @@ This project implements a **Graph RAG** (Retrieval-Augmented Generation) approac
 4. **AI Agent Interaction**: AI agents explore the graph by traversing nodes and edges, retrieving relevant facts and their context. This approach ensures that the system retains important contextual information across different sections of the document.
 
 FULL PIPELINE FOR KNOWLEDGE GRAPH CREATION : https://github.com/Aryankb/DOC_QNA/blob/main/graphreader_import.ipynb
-FULL PIPELINE FOR RAG : 
+
+FULL PIPELINE FOR RAG : https://github.com/Aryankb/DOC_QNA/blob/main/graphreader_langgraph.ipynb
