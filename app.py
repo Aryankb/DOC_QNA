@@ -33,6 +33,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_community.vectorstores import Neo4jVector
 from langchain.embeddings import HuggingFaceEmbeddings
 from neo4j import GraphDatabase
+from pydantic import BaseModel, Field
 
 
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
@@ -45,17 +46,21 @@ model = ChatGoogleGenerativeAI(
     google_api_key=os.getenv("GOOGLE_API_KEY")
     # other params...
 )
-# from pydantic import BaseModel, Field
+
 
 load_dotenv()
 
-# os.environ['GEMINI_API_KEY'] =os.getenv("GOOGLE_API_KEY")
+uri=os.getenv("NEO4J_URI") 
+username=os.getenv("NEO4J_USERNAME")
+password=os.getenv("NEO4J_PASSWORD")
 os.environ['LANGCHAIN_TRACING_V2'] ="true"
 os.environ['LANGCHAIN_API_KEY'] =os.getenv("LANGCHAIN_API_KEY")
-
 os.environ["NEO4J_URI"] = os.getenv("NEO4J_URI")    
 os.environ["NEO4J_USERNAME"] = os.getenv("NEO4J_USERNAME")
 os.environ["NEO4J_PASSWORD"] = os.getenv("NEO4J_PASSWORD")
+
+
+
 
 graph = Neo4jGraph(refresh_schema=False)
 neo4j_graph = Neo4jGraph(refresh_schema=False)
@@ -83,7 +88,7 @@ She to actual names).
 4. Ensure that the key elements and atomic facts you extract are presented in the same language as
 the original text (e.g., English or hindi).
 #####
-1. Output a dictionary, should be strictly start with {{ and end with }}, it should be non-json, simple text. This dictionary will have a key 'atomic_facts' whose value will be a list of atomic facts.
+1. Output a json dictionary. This dictionary will have a key 'atomic_facts' whose value will be a list of atomic facts.
 Each element in the list should be a dictionary with keys 'key_elements' (list of key_elements)  and 'atomic_fact' (fact description).
 2. keep all keys in double quotes.
 """
@@ -107,17 +112,6 @@ construction_prompt = ChatPromptTemplate.from_messages(
 
 
 
-# class AtomicFact(BaseModel):
-#     key_elements: List[str] = Field(description="""The essential nouns (e.g., characters, times, events, places, numbers), verbs (e.g.,
-# actions), and adjectives (e.g., states, feelings) that are pivotal to the atomic fact's narrative.""")
-#     atomic_fact: str = Field(description="""The smallest, indivisible facts, presented as concise sentences. These include
-# propositions, theories, existences, concepts, and implicit elements like logic, causality, event
-# sequences, interpersonal relationships, timelines, etc.""")
-
-# class Extraction(BaseModel):
-#     atomic_facts: List[AtomicFact] = Field(description="List of atomic facts")
-
-
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-1.5-flash",
@@ -126,9 +120,8 @@ llm = ChatGoogleGenerativeAI(
     timeout=None,
     max_retries=2,
     google_api_key=os.getenv("GOOGLE_API_KEY")
-    # other params...
 )
-# structured_llm=llm.with_structured_output(Extraction)
+
 construction_chain = construction_prompt | llm
 
 
@@ -166,28 +159,7 @@ WITH nodes[index] AS start, nodes[index + 1] AS end
 MERGE (start)-[:NEXT]->(end)
 """
 
-class Neo4jHandler:
-    def __init__(self, uri, user, password):
-        self.driver = GraphDatabase.driver(uri, auth=(user, password))
 
-    def close(self):
-        self.driver.close()
-
-    def insert_chunks_and_facts(self, document_name, data):
-        with self.driver.session() as session:
-            session.write_transaction(self._insert_chunks_and_facts, document_name, data)
-
-    def create_chunk_relationships(self, document_name):
-        with self.driver.session() as session:
-            session.write_transaction(self._create_chunk_relationships, document_name)
-
-    @staticmethod
-    def _insert_chunks_and_facts(tx, document_name, data):
-        tx.run(import_query, document_name=document_name, data=data)
-
-    @staticmethod
-    def _create_chunk_relationships(tx, document_name):
-        tx.run(graph_creation_query, document_name=document_name)
 
 
 def encode_md5(text):
@@ -199,24 +171,31 @@ def encode_md5(text):
 
 
 import json
-import yaml
-async def process_document(text, document_name, chunk_size=3000, chunk_overlap=200):
+async def process_document(text, document_name, chunk_size, chunk_overlap):
     start = datetime.now()
     print(f"Started extraction at: {start}")
     text_splitter = TokenTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     texts = text_splitter.split_text(text)
     print(f"Total text chunks: {len(texts)}")
     tasks = []
+    idx=1
     for chunk_text in texts:
         unformatted = construction_chain.invoke({"input":chunk_text})
         # formatted_outer=json.loads(unformatted.model_dump())   
         
-        tasks.append(unformatted.content)
-        print(unformatted.content,"\n")
+        tasks.append(unformatted.content[7:-4])
+        print(idx)
+        idx+=1
+        # print(unformatted.content,"\n")
         
     
     print(f"Finished LLM extraction after: {datetime.now() - start}")
-    docs = [json.loads(el) for el in tasks]
+    print(tasks)
+    docs=[]
+    for el in tasks:
+        wow=json.loads(el)
+        print(wow,"\n")
+        docs.append(wow)
     for index, doc in enumerate(docs):
         doc['chunk_id'] = encode_md5(texts[index])
         doc['chunk_text'] = texts[index]
@@ -224,35 +203,18 @@ async def process_document(text, document_name, chunk_size=3000, chunk_overlap=2
         for af in doc["atomic_facts"]:
 
             af["id"] = encode_md5(af["atomic_fact"])
-    # Import chunks/atomic facts/key elements
-    # graph.query(import_query, 
-    #         params={"data": docs, "document_name": document_name})
-    # # Create next relationships between chunks
-    # graph.query(graph_creation_query,
-    #        params={"document_name":document_name})
-    print(docs)
-    NEO4J_URI="neo4j+s://56e10b77.databases.neo4j.io"
-    NEO4J_USER="neo4j"
-    NEO4J_PASSWORD="Fwbo5XZDXMOfU-MfffW6hAwz08JBepFtl_ETUAheJEk"
-    neo4j_handler = Neo4jHandler(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
+    driver = GraphDatabase.driver(uri, auth=(username, password))
+    with driver.session() as session:
+        session.run(import_query, document_name=document_name, data=docs)
+
+    with driver.session() as session:
+        session.run(graph_creation_query, document_name=document_name)
+    driver.close()
+   
+    
 
 
-    # Convert Python dictionary to YAML format
-    yaml_data = yaml.dump(docs, default_flow_style=False)
-
-    print(yaml_data)
-    try:
-        # Insert the chunks and atomic facts
-        neo4j_handler.insert_chunks_and_facts(document_name, yaml_data)
-
-        # Create the relationships between chunks
-        neo4j_handler.create_chunk_relationships(document_name)
-
-        print(f"Data successfully inserted and relationships created for document: {document_name}")
-
-    finally:
-        # Close the connection
-        neo4j_handler.close()
+    
     print(f"Finished import at: {datetime.now() - start}")
 
 
@@ -382,7 +344,9 @@ neo4j_vector = Neo4jVector.from_existing_graph(
 
 def get_potential_nodes(question: str) -> List[str]:
     data = neo4j_vector.similarity_search(question, k=50)
-    return [el.page_content for el in data]
+    ret=[el.page_content for el in data]
+    print(ret)
+    return ret
 
 
 initial_node_system = """
@@ -409,7 +373,7 @@ your choice from those provided, and refrain from fabricating your own. The node
 must correspond exactly to the nodes given by the user, with identical wording.
 Finally, I emphasize again that you need to select the starting node from the given Nodes, and
 it must be consistent with the words of the node you selected. Please strictly follow the above
-format. Let’s begin.
+format. Each line should be a valid dictionary , each dictionary should have the keys : key_element and score. Keys should be strictly enclosed in double quotes. Let’s begin.
 """
 
 initial_node_prompt = ChatPromptTemplate.from_messages(
@@ -440,7 +404,7 @@ whereas a score of 0 suggests minimal relevance.""")
 class InitialNodes(BaseModel):
     initial_nodes: List[Node] = Field(description="List of relevant nodes to the question and plan")
 
-initial_nodes_chain = initial_node_prompt | model.with_structured_output(InitialNodes)
+initial_nodes_chain = initial_node_prompt | model
 
 
 def initial_node_selection(state: OverallState) -> OverallState:
@@ -452,15 +416,11 @@ def initial_node_selection(state: OverallState) -> OverallState:
             "nodes": potential_nodes,
         }
     )
+    print(initial_nodes.content)
     # paper uses 5 initial nodes
     check_atomic_facts_queue = [
-        el.key_element
-        for el in sorted(
-            initial_nodes.initial_nodes,
-            key=lambda node: node.score,
-            reverse=True,
-        )
-    ][:5]
+        el["key_element"] for el in json.loads(initial_nodes.content[7:-4]) if el['score'] > 60
+    ]
     return {
         "check_atomic_facts_queue": check_atomic_facts_queue,
         "previous_actions": ["initial_node_selection"],
@@ -479,12 +439,6 @@ determining whether to proceed with reviewing the text chunk corresponding to th
 Given the question, the rational plan, previous actions, notebook content, and the current node’s
 atomic facts and their corresponding chunk IDs, you have the following Action Options:
 #####
-1. read_chunk(List[ID]): Choose this action if you believe that a text chunk linked to an atomic
-fact may hold the necessary information to answer the question. This will allow you to access
-more complete and detailed information.
-2. stop_and_read_neighbor(): Choose this action if you ascertain that all text chunks lack valuable
-information.
-#####
 Strategy:
 #####
 1. Reflect on previous actions and prevent redundant revisiting nodes or chunks.
@@ -496,7 +450,20 @@ complete information.
 Finally, it is emphasized again that even if the atomic fact is only slightly relevant to the
 question, you should still look at the text chunk to avoid missing information. You should only
 choose stop_and_read_neighbor() when you are very sure that the given text chunk is irrelevant to
-the question. Please strictly follow the above format. Let’s begin.
+the question. Please strictly follow the above format.
+#####
+Output a valid dictionary , dictionary should have the keys : 
+"updated_notebook" (First, combine your current notebook with new insights and findings about
+the question from current atomic facts, creating a more complete version of the notebook that
+contains more valid information.), 
+"rational_next_action" (Based on the given question, the rational plan, previous actions, and
+notebook content, analyze how to choose the next action.), 
+"chosen_action" (1. read_chunk(List[ID]): Choose this action if you believe that a text chunk linked to an atomic
+fact may hold the necessary information to answer the question. This will allow you to access
+more complete and detailed information.
+2. stop_and_read_neighbor(): Choose this action if you ascertain that all text chunks lack valuable
+information.). 
+Keys should be strictly enclosed in double quotes. Let’s begin.
 """
 
 class AtomicFactOutput(BaseModel):
@@ -530,7 +497,7 @@ Atomic facts: {atomic_facts}"""
     ]
 )
 
-atomic_fact_chain = atomic_fact_check_prompt | model.with_structured_output(AtomicFactOutput)
+atomic_fact_chain = atomic_fact_check_prompt | model
 
 def get_atomic_facts(key_elements: List[str]) -> List[Dict[str, str]]:
     data = neo4j_graph.query("""
@@ -567,12 +534,12 @@ def atomic_fact_check(state: OverallState) -> OverallState:
             "atomic_facts": atomic_facts,
         }
     )
-
-    notebook = atomic_facts_results.updated_notebook
+    lord=json.loads(atomic_facts_results.content[7:-4])
+    notebook = lord["updated_notebook"]
     print(
-        f"Rational for next action after atomic check: {atomic_facts_results.rational_next_action}"
+        f"Rational for next action after atomic check: {lord['rational_next_action']}"
     )
-    chosen_action = parse_function(atomic_facts_results.chosen_action)
+    chosen_action = parse_function(lord["chosen_action"])
     print(f"Chosen action: {chosen_action}")
     response = {
         "notebook": notebook,
@@ -962,7 +929,7 @@ display(Image(langgraph.get_graph().draw_mermaid_png()))
 async def get_answer(question: str):
     # result = await llm.ainvoke({"input": question, "document_name": document_name})
     # return result.dict()
-    ans=langgraph.invoke({"question":question})
+    ans= langgraph.invoke({"question":question})
     return ans
 
 
@@ -979,7 +946,7 @@ name=st.text_input("Enter the name of the document")
 uploaded_file = st.file_uploader("Upload a PDF / CSV / TXT file", type=["pdf", "txt","csv"])
 
 # Step 2: Input Question
-if uploaded_file:
+if st.button("Create Knowledge Graph") and uploaded_file:   
     # Handle PDF files
     if uploaded_file.type == "application/pdf":
         # Open the PDF file using a binary stream
@@ -1010,7 +977,7 @@ if uploaded_file:
         st.text("Creating graph from TXT content...")
     async def call():
         
-        await process_document(FULL_TEXT, name, chunk_size=500, chunk_overlap=100)
+        await process_document(FULL_TEXT, name, chunk_size=1500, chunk_overlap=100)
 
     asyncio.run(call())
     # Process the document (you'll need to define this function)
@@ -1024,9 +991,10 @@ question = st.text_input("Type your question here...")
 
 # Button to trigger question-answering
 if st.button("Get Answer"):
-
-    ans = get_answer(question)
-    st.write(ans)
+    async def call2():
+        
+        return await get_answer(question)
+    st.write(asyncio.run(call2()))
     # st.write(ans["answer"])
     # st.write(ans["analysis"])
         # st.subheader("💬 Response")
