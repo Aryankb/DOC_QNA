@@ -4,8 +4,6 @@ import os
 from datetime import datetime
 from hashlib import md5
 from typing import Dict, List
-
-#docker  RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && apt-get update -y && apt-get install google-cloud-cli -y
     
 
 
@@ -18,7 +16,6 @@ from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 import fitz
 
-#/home/aryan/.config/gcloud/application_default_credentials.json
 
 
 import os
@@ -368,13 +365,13 @@ a score between 0 and 100. A score of 100 implies a high likelihood of relevance
 whereas a score of 0 suggests minimal relevance.
 2. Present each chosen starting node in a separate line, accompanied by its relevance score. Format
 each line as follows: Node: [Key Element of Node], Score: [Relevance Score].
-3. Please select at least 10 starting nodes, ensuring they are non-repetitive and diverse.
+3. Please select at least 15 starting nodes, ensuring they are non-repetitive and diverse.
 4. In the user’s input, each line constitutes a node. When selecting the starting node, please make
 your choice from those provided, and refrain from fabricating your own. The nodes you output
 must correspond exactly to the nodes given by the user, with identical wording.
 Finally, I emphasize again that you need to select the starting node from the given Nodes, and
 it must be consistent with the words of the node you selected. Please strictly follow the above
-format. Each line should be a valid dictionary , each dictionary should have the keys : key_element and score. Keys should be strictly enclosed in double quotes. Let’s begin.
+format. Return a list of dictionaries, each dictionary should have the keys : key_element and score. Keys should be strictly enclosed in double quotes. Let’s begin.
 """
 
 initial_node_prompt = ChatPromptTemplate.from_messages(
@@ -420,7 +417,7 @@ def initial_node_selection(state: OverallState) -> OverallState:
     print(initial_nodes.content)
     # paper uses 5 initial nodes
     check_atomic_facts_queue = [
-        el["key_element"] for el in json.loads(initial_nodes.content[7:-4]) if el['score'] > 60
+        el["key_element"] for el in json.loads(initial_nodes.content[7:-4]) if el['score'] >= 50
     ]
     return {
         "check_atomic_facts_queue": check_atomic_facts_queue,
@@ -464,7 +461,8 @@ fact may hold the necessary information to answer the question. This will allow 
 more complete and detailed information.
 2. stop_and_read_neighbor(): Choose this action if you ascertain that all text chunks lack valuable
 information.). 
-Keys should be strictly enclosed in double quotes. Let’s begin.
+Keys should be strictly enclosed in double quotes. 
+Use double quotes instead of single quotes everywhere. Let’s begin.
 """
 
 class AtomicFactOutput(BaseModel):
@@ -586,13 +584,12 @@ Strategy:
 1. Reflect on previous actions and prevent redundant revisiting of nodes or chunks.
 2. You can only choose one action.
 #####
-Please strictly follow the above format. Let’s begin
+Please strictly follow the above format. The choosen action should contain the action name folloewd by parenthesis . example : read_subsequent_chunk().
+Please give the update nodebook with all information at last. Let’s begin!
 """
 
 class ChunkOutput(BaseModel):
-    updated_notebook: str = Field(description="""First, combine your previous notes with new insights and findings about the
-question from current text chunks, creating a more complete version of the notebook that contains
-more valid information.""")
+    
     rational_next_move: str = Field(description="""Based on the given question, rational plan, previous actions, and
 notebook content, analyze how to choose the next action.""")
     chosen_action: str = Field(description="""1. search_more(): Choose this action if you think that the essential information necessary to
@@ -604,6 +601,9 @@ valuable information for answering the question.
 4. termination(): Choose this action if you believe that the information you have currently obtained
 is enough to answer the question. This will allow you to summarize the gathered information and
 provide a final answer.""")
+    updated_notebook: str = Field(description="""First, combine your previous notes with new insights and findings about the
+question from current text chunks, creating a more complete version of the notebook that contains
+more valid information.""")
 
 chunk_read_prompt = ChatPromptTemplate.from_messages(
     [
@@ -996,19 +996,7 @@ if st.button("Get Answer"):
         
         return await get_answer(question)
     st.write(asyncio.run(call2()))
-    # st.write(ans["answer"])
-    # st.write(ans["analysis"])
-        # st.subheader("💬 Response")
-        # # Placeholder for the chatbot response (currently blank)
-        # st.success("The answer will appear here.")
 
-        # st.subheader("📄 Sources")
-        # # Placeholder for showing sources used for the answer (currently blank)
-        # st.info("The sources from the document will appear here.")
-
-        # st.subheader("🔗 Relationships Graph")
-        # # Placeholder for relationship graph visualization (currently blank)
-        # st.warning("Graph of relationships will appear here.")
 
 # Styling to make the interface more appealing
 st.markdown("""
