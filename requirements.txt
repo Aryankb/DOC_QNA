@@ -3,3 +3,4 @@ pydantic
 langgraph
 neo4j
 langchain_community
+langchain_google_genai
