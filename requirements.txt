@@ -2,3 +2,4 @@ langchain
 pydantic
 langgraph
 neo4j
+langchain_community
