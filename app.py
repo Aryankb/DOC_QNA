@@ -14,7 +14,8 @@ from langchain_text_splitters import TokenTextSplitter
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
-import fitz
+from PyPDF2 import PdfReader
+from io import BytesIO
 
 
 
@@ -951,13 +952,14 @@ if st.button("Create Knowledge Graph") and uploaded_file:
     # Handle PDF files
     if uploaded_file.type == "application/pdf":
         # Open the PDF file using a binary stream
-        pdf = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+        binary_stream = BytesIO(uploaded_file.read())
+        pdf_reader = PdfReader(binary_stream)
         FULL_TEXT = ""
         
         # Extract text from each page
-        for page_num in range(pdf.page_count):
-            page = pdf.load_page(page_num)
-            text = page.get_text("text")
+        for page in pdf_reader.pages:
+            
+            text = page.extracted_text()
             FULL_TEXT += text
             FULL_TEXT += "\npage_break\n"
         
