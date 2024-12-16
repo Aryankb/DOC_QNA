@@ -3,6 +3,9 @@
 ## Overview
 This project implements a **Graph RAG** (Retrieval-Augmented Generation) approach to retain context from long documents, save the information in a **Neo4j** graph database, and use **AI agents** to explore and retrieve relevant information from the graph. This method improves upon the traditional RAG by maintaining context from various parts of lengthy documents, providing better retrieval and exploration of knowledge stored in graph form.
 
+![image](https://github.com/user-attachments/assets/6b57cc6e-49a2-4225-96a9-68423c97158f)
+
+
 ## Key Features
 1. **Graph-based Information Retention**: Unlike standard RAG approaches, which may lose context over long documents, this graph-based approach retains detailed context from different sections of the document.
    
