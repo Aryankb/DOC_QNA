@@ -26,14 +26,14 @@ import ast
 from typing import List, Dict, Literal, Annotated
 from typing_extensions import TypedDict
 from IPython.display import Image, display
-from langgraph.graph import StateGraph, START, END
+
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.vectorstores import Neo4jVector
 from langchain.embeddings import HuggingFaceEmbeddings
 from neo4j import GraphDatabase
 from pydantic import BaseModel, Field
 
-
+load_dotenv()
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 model = ChatGoogleGenerativeAI(
     model="gemini-1.5-flash",
@@ -46,7 +46,7 @@ model = ChatGoogleGenerativeAI(
 )
 
 
-load_dotenv()
+
 
 uri=os.getenv("NEO4J_URI") 
 username=os.getenv("NEO4J_USERNAME")
@@ -57,7 +57,7 @@ os.environ["NEO4J_URI"] = os.getenv("NEO4J_URI")
 os.environ["NEO4J_USERNAME"] = os.getenv("NEO4J_USERNAME")
 os.environ["NEO4J_PASSWORD"] = os.getenv("NEO4J_PASSWORD")
 
-
+from langgraph.graph import StateGraph, START, END
 
 
 graph = Neo4jGraph(refresh_schema=False)
@@ -178,7 +178,7 @@ async def process_document(text, document_name, chunk_size, chunk_overlap):
     tasks = []
     idx=0
     while idx < len(texts):
-        unformatted = construction_chain.invoke({"input":text[idx]})
+        unformatted = construction_chain.invoke({"input":texts[idx]})
         # formatted_outer=json.loads(unformatted.model_dump())   
         try:
             wow=json.loads(unformatted.content[7:-4])
@@ -632,7 +632,7 @@ def get_subsequent_chunk_id(chunk):
     MATCH (c:Chunk)-[:NEXT]->(next)
     WHERE c.id = $id
     RETURN next.id AS next
-    """)
+    """, params={"id": chunk})  # Pass the parameter here
     return data
 
 def get_previous_chunk_id(chunk):
@@ -640,8 +640,9 @@ def get_previous_chunk_id(chunk):
     MATCH (c:Chunk)<-[:NEXT]-(previous)
     WHERE c.id = $id
     RETURN previous.id AS previous
-    """)
+    """, params={"id": chunk})  # Pass the parameter here
     return data
+
 
 def get_chunk(chunk_id: str) -> List[Dict[str, str]]:
     data = neo4j_graph.query("""
@@ -681,9 +682,11 @@ def chunk_check(state: OverallState) -> OverallState:
     }
     if chosen_action.get("function_name") == "read_subsequent_chunk":
         subsequent_id = get_subsequent_chunk_id(chunk_id)
+        print(f"Subsequent chunk id: {subsequent_id}")
         check_chunks_queue.append(subsequent_id)
     elif chosen_action.get("function_name") == "read_previous_chunk":
         previous_id = get_previous_chunk_id(chunk_id)
+        print(f"Previous chunk id: {previous_id}")
         check_chunks_queue.append(previous_id)
     elif chosen_action.get("function_name") == "search_more":
         # Go over to next chunk
